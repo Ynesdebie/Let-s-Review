@@ -14,6 +14,7 @@
     color: #f8f9fa;
     display: flex; flex-direction: column; align-items: center;
     padding: 1rem;
+    position: relative;
   }
   header {
     font-weight: 600;
@@ -21,6 +22,7 @@
     margin: 1rem 0 1rem 0;
     text-align: center;
     text-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+    width: 100%;
   }
   main {
     background: rgba(255,255,255,0.1);
@@ -30,25 +32,28 @@
     width: 100%;
     box-shadow: 0 8px 24px rgba(0,0,0,0.3);
   }
+  label, button, input {
+    font-weight: 600;
+  }
   label {
     display: block;
     margin-bottom: 0.25rem;
-    font-weight: 600;
   }
   input[type="file"],
-  input[type="url"] {
+  input[type="url"],
+  input[type="number"],
+  textarea {
     margin-bottom: 1rem;
     width: 100%;
     padding: 0.5rem;
     font-size: 1rem;
     border-radius: 6px;
     border: none;
+    font-family: monospace, monospace;
   }
   input[type="number"] {
     width: 4rem;
     text-align: center;
-    margin-right: 0.5rem;
-    font-weight: 600;
   }
   button {
     background: #5a60ff;
@@ -104,10 +109,33 @@
     font-style: italic;
     text-align: center;
   }
+  #toolsBtn {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: #1abc9c;
+    color: #0b1446;
+    padding: 0.5rem 1rem;
+    font-weight: 700;
+    font-size: 1rem;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 5px 12px rgba(26,188,156,0.5);
+    transition: background 0.3s ease;
+    z-index: 1000;
+  }
+  #toolsBtn:hover {
+    background: #16a085;
+    box-shadow: 0 6px 16px rgba(22,160,133,0.7);
+  }
 </style>
 </head>
 <body>
 <header>Let's Review - Admin</header>
+
+<button id="toolsBtn">Tools</button>
+
 <main>
 
   <label for="pdfInput">Upload Source Material PDF(s):</label>
@@ -141,7 +169,7 @@
 
   <div id="extractedTextContainer" style="display:none;">
     <label for="extractedText">Extracted Text from PDFs and Website:</label>
-    <textarea id="extractedText" readonly style="width:100%;height:150px; border-radius:6px; background: rgba(0,0,0,0.25); color:#f0f0f0; padding:0.5rem; font-family: monospace; font-size:0.9rem; white-space: pre-wrap; resize: vertical;"></textarea>
+    <textarea id="extractedText" readonly style="height:150px; white-space: pre-wrap; resize: vertical;"></textarea>
   </div>
 
   <div id="prepareTestContainer" style="margin-top:1rem; text-align:center;">
@@ -164,6 +192,7 @@
   let sourceText = '';
   let questions = [];
   let questionCount = 50;
+  let previouslyGeneratedWords = new Set();
 
   const pdfInput = document.getElementById('pdfInput');
   const websiteInput = document.getElementById('websiteInput');
@@ -182,6 +211,7 @@
   const generatedLinkInput = document.getElementById('generatedLink');
   const copyLinkBtn = document.getElementById('copyLinkBtn');
   const logDiv = document.getElementById('log');
+  const toolsBtn = document.getElementById('toolsBtn');
 
   function log(text){
     const now = new Date().toLocaleTimeString();
@@ -326,32 +356,43 @@
     log('Displayed extracted text.');
   }
 
+  // Improved generateQuestionsFromText ensuring unique words between generations
   function generateQuestionsFromText() {
-    questions = [];
     const words = sourceText.toLowerCase()
       .replace(/[^a-z\s]/g,'')
       .split(/\s+/)
       .filter(w => w.length > 5);
 
-    let uniqueWords = [...new Set(words)].slice(0,1000);
+    // Filter words excluding previously generated ones
+    let newWordsSet = new Set(words.filter(w => !previouslyGeneratedWords.has(w)));
 
-    uniqueWords.forEach(word => {
-      questions.push({
-        question: `Select the correct description for the word "${word}":`,
-        options: [
-          `This term relates to ${word}.`,
-          `This term is unrelated to ${word}.`,
-          `This term means something else.`,
-          `This word is not important.`,
-        ],
-        answerIndex: 0
-      });
-    });
+    // Reset previouslyGeneratedWords if no new words left
+    if(newWordsSet.size === 0) {
+      previouslyGeneratedWords.clear();
+      newWordsSet = new Set(words);
+      log('All words exhausted. Resetting previously generated words.');
+    }
+
+    const uniqueWords = Array.from(newWordsSet).slice(0, 1000);
+
+    // Add these words to previouslyGeneratedWords set
+    uniqueWords.forEach(w => previouslyGeneratedWords.add(w));
+
+    questions = uniqueWords.map(word => ({
+      question: `Select the correct description for the word "${word}":`,
+      options: [
+        `This term relates to ${word}.`,
+        `This term is unrelated to ${word}.`,
+        `This term means something else.`,
+        `This word is not important.`,
+      ],
+      answerIndex: 0
+    }));
   }
 
   function shuffleQuestions() {
-    for(let i=questions.length-1; i>0; i--){
-      const j = Math.floor(Math.random()*(i+1));
+    for(let i = questions.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
       [questions[i], questions[j]] = [questions[j], questions[i]];
     }
     log('Questions shuffled.');
@@ -377,7 +418,7 @@
       return;
     }
     const limitedQuestions = questions.slice(0, count);
-    const totalSeconds = parseInt(timerHours.value)*3600 + parseInt(timerMinutes.value)*60;
+    const totalSeconds = parseInt(timerHours.value) * 3600 + parseInt(timerMinutes.value) * 60;
     const testData = {
       questions: limitedQuestions,
       timeLimitSeconds: totalSeconds,
@@ -427,7 +468,7 @@
       if(!text){
         alert('No textual content found on that page.');
       } else {
-        sourceText += `--- Website (${url}) ---\n${text}\n\n`;
+        sourceText += `--- Text from website ${url} ---\n${text}\n\n`;
         extractedTextContainer.style.display = 'block';
         extractedText.textContent = sourceText;
         log(`Extracted website text from ${url}`);
@@ -452,17 +493,10 @@
   shuffleBtn.disabled = true;
   linkContainer.style.display = 'none';
 
-  // Add signature to bottom of page
-  const signatureDiv = document.createElement('div');
-  signatureDiv.id = 'signature';
-  signatureDiv.textContent = 'by: Sweetgwapa';
-  signatureDiv.style.marginTop = '1.8rem';
-  signatureDiv.style.fontSize = '0.85rem';
-  signatureDiv.style.fontWeight = '600';
-  signatureDiv.style.color = '#ccc';
-  signatureDiv.style.fontStyle = 'italic';
-  signatureDiv.style.textAlign = 'center';
-  document.body.appendChild(signatureDiv);
+  // Add event listener for Tools button
+  toolsBtn.addEventListener('click', () => {
+    window.location.href = "https://alivenfgh.github.io/PDF-editor/";
+  });
 </script>
 </body>
 </html>
